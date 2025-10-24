@@ -21,8 +21,8 @@ class DicSegmentor(BaseModel):
     Args:
         arch (str): Architecture size: 'S', 'B', 'XL'. Default: 'S'.
         num_classes (int): Number of segmentation classes. Default: 19 (Cityscapes).
-        use_gating (bool): Enable conditional gating. Default: True.
-        use_condition (bool): Enable weather condition input. Default: True.
+        use_gating (bool): 启用 conditional gating. Default: True.
+        use_condition (bool): 启用 weather condition input. Default: True.
         use_sparse_skip (bool): Use sparse stage-level skip. Default: True.
         num_weather_classes (int): Number of weather classes. Default: 5.
         with_auxiliary_head (bool): Whether to add auxiliary head on decoder output.
@@ -71,13 +71,13 @@ class DicSegmentor(BaseModel):
             use_sparse_skip=use_sparse_skip,
         )
         
-        # Segmentation head: simple upsampling + classification
-        # D0 output channels = 96 for DiC-S
-        d0_out_channels = self.decoder.stage_channels[-1]
+        # Segmentation head: 1x1 Conv + classification
+        # D0 output channels = stage_channels[0] (E0 output channels)
+        # For DiC-S: 96, DiC-B: 128, DiC-XL: 160
+        d0_out_channels = self.decoder.stage_channels[0]  # ✅ 改为 [0]，取 E0 通道数
         
         self.decode_head = nn.Sequential(
             nn.Conv2d(d0_out_channels, num_classes, kernel_size=1, bias=True),
-            nn.Upsample(scale_factor=1, mode='bilinear', align_corners=False),
         )
         
         # Optional: Auxiliary head (not implemented yet, placeholder)
@@ -143,13 +143,13 @@ class DicSegmentor(BaseModel):
                     weather_label_list, dtype=torch.long, device=inputs.device
                 )
         
-        # Encoder
-        encoder_outputs = self.encoder(inputs, weather_label)  # List of 5 stages
+        # Encoder: returns list of 5 stage outputs [E0, E1, E2, E3, E4]
+        encoder_outputs = self.encoder(inputs, weather_label)  # List of 5 tensors
         
-        # Decoder
+        # Decoder: takes encoder outputs, returns D0 (same spatial size as E0)
         decoder_output = self.decoder(encoder_outputs)  # [B, 96, H, W]
         
-        # Segmentation head
+        # Segmentation head: 1x1 Conv to project to num_classes
         logits = self.decode_head(decoder_output)  # [B, num_classes, H, W]
         
         return logits

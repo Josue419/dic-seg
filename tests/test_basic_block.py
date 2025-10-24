@@ -20,8 +20,8 @@ class TestConditionalGatingBlock(unittest.TestCase):
         self.out_channels = 192
         self.height, self.width = 32, 32
     
-    def test_forward_with_condition(self):
-        """Test forward pass with weather condition."""
+    def test_forward_with_condition_embedding(self):
+        """Test forward pass with condition embedding."""
         block = ConditionalGatingBlock(
             in_channels=self.in_channels,
             out_channels=self.out_channels,
@@ -34,11 +34,34 @@ class TestConditionalGatingBlock(unittest.TestCase):
             self.batch_size, self.in_channels, self.height, self.width,
             device=self.device
         )
-        weather_label = torch.randint(0, 5, (self.batch_size,), device=self.device)
         
-        output = block(x, weather_label=None)  # condition embedding inside
+        # Create condition embedding: [B, out_channels]
+        condition_embedding = torch.randn(
+            self.batch_size, self.out_channels, device=self.device
+        )
         
-        # Condition embedding should be generated internally
+        output = block(x, condition_embedding=condition_embedding)
+        
+        self.assertEqual(output.shape, (self.batch_size, self.out_channels, self.height, self.width))
+    
+    def test_forward_with_none_condition(self):
+        """Test forward pass with None condition (should default to zeros)."""
+        block = ConditionalGatingBlock(
+            in_channels=self.in_channels,
+            out_channels=self.out_channels,
+            stage_idx=1,
+            use_gating=True,
+            use_condition=True,
+        ).to(self.device)
+        
+        x = torch.randn(
+            self.batch_size, self.in_channels, self.height, self.width,
+            device=self.device
+        )
+        
+        # Pass None → should default to zero embedding
+        output = block(x, condition_embedding=None)
+        
         self.assertEqual(output.shape, (self.batch_size, self.out_channels, self.height, self.width))
     
     def test_forward_without_condition(self):
@@ -92,6 +115,33 @@ class TestConditionalGatingBlock(unittest.TestCase):
         output = block(x, condition_embedding=None)
         
         self.assertEqual(output.shape, (self.batch_size, self.out_channels, self.height, self.width))
+    
+    def test_gradient_flow_with_gating(self):
+        """Test that gradients flow correctly through gating."""
+        block = ConditionalGatingBlock(
+            in_channels=self.in_channels,
+            out_channels=self.out_channels,
+            use_gating=True,
+            use_condition=True,
+        ).to(self.device)
+        
+        x = torch.randn(
+            self.batch_size, self.in_channels, self.height, self.width,
+            device=self.device, requires_grad=True
+        )
+        condition_embedding = torch.randn(
+            self.batch_size, self.out_channels, device=self.device, requires_grad=True
+        )
+        
+        output = block(x, condition_embedding=condition_embedding)
+        loss = output.mean()
+        loss.backward()
+        
+        # Check gradients
+        self.assertIsNotNone(x.grad)
+        self.assertIsNotNone(condition_embedding.grad)
+        self.assertTrue(torch.any(x.grad != 0))
+        self.assertTrue(torch.any(condition_embedding.grad != 0))
 
 
 if __name__ == '__main__':

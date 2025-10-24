@@ -12,9 +12,12 @@ class TestDicSegmentor(unittest.TestCase):
     
     def setUp(self):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.batch_size = 2
-        self.image_size = 512
+        self.batch_size = 1
+        self.image_size = 128
         self.num_classes = 19
+    def tearDown(self):
+        """清空显存缓存（重要！）"""
+        torch.cuda.empty_cache()    
     
     def test_forward_tensor_mode(self):
         """Test forward pass in 'tensor' mode."""
