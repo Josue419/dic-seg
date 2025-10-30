@@ -1,18 +1,18 @@
 """
 Debug: 2 epochs on Cityscapes - 最终修复版
 
-关键改进：
-1. LoadAnnotations 必须在 LoadImageFromFile 之后
-2. Resize 必须在两者之后
-3. 确保所有必需的键都存在
+关键修复：
+1. 正确使用 pseudo_collate 函数
+2. 确保 Transform 注册表问题解决
+3. 完善数据加载器配置
 """
-
+#from mmengine.dataset import default_collate
 # ============================================================================
 # 第一步：导入自定义模块
 # ============================================================================
 
 custom_imports = dict(
-    imports=['mmseg_custom'],
+    imports=['mmseg_custom','mmengine.dataset'],  
     allow_failed_imports=False
 )
 
@@ -24,9 +24,9 @@ model = dict(
     type='DicSegmentor',
     arch='S',
     num_classes=19,
-    use_gating=True,
-    use_condition=True,
-    use_sparse_skip=True,
+    use_gating=False,
+    use_condition=False,
+    use_sparse_skip=False,
     num_weather_classes=5,
 )
 
@@ -36,26 +36,29 @@ model = dict(
 
 data_root = '/root/projects/mmseg/datasets/cityscapes'
 
-# ✅ 关键改进：Pipeline 顺序必须正确
+# Pipeline 配置
 train_pipeline = [
-    dict(type='LoadImageFromFile'),              # 第 1 步：加载图像
-    dict(type='LoadAnnotations'),                # 第 2 步：加载标签（必须在 Resize 前）
-    dict(type='Resize', scale=(512, 512), keep_ratio=False),  # 第 3 步：Resize
-    dict(type='RandomFlip', prob=0.5),           # 第 4 步：Flip
-    dict(type='PackSegInputs'),                  # 第 5 步：打包输入
+    dict(type='LoadImageFromFile', to_float32=True),
+    dict(type='LoadAnnotations'),
+    dict(type='Resize', scale=(256, 256), keep_ratio=False),
+    dict(type='RandomFlip', prob=0.5),
+    dict(type='PackSegInputs'),
 ]
 
 val_pipeline = [
-    dict(type='LoadImageFromFile'),              # 第 1 步
-    dict(type='LoadAnnotations'),                # 第 2 步
-    dict(type='Resize', scale=(512, 512), keep_ratio=False),  # 第 3 步
-    dict(type='PackSegInputs'),                  # 第 4 步
+    dict(type='LoadImageFromFile', to_float32=True),
+    dict(type='LoadAnnotations'),
+    dict(type='Resize', scale=(512, 512), keep_ratio=False),
+    dict(type='PackSegInputs'),
 ]
 
 train_dataloader = dict(
     batch_size=1,
     num_workers=0,
+    persistent_workers=False,
+    pin_memory=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
+    collate_fn=dict(type='default_collate'),
     dataset=dict(
         type='CityscapesACDCSimple',
         data_root=data_root,
@@ -70,7 +73,10 @@ train_dataloader = dict(
 val_dataloader = dict(
     batch_size=1,
     num_workers=0,
+    persistent_workers=False,
+    pin_memory=True,
     sampler=dict(type='DefaultSampler', shuffle=False),
+    collate_fn=dict(type='default_collate'),
     dataset=dict(
         type='CityscapesACDCSimple',
         data_root=data_root,
@@ -84,8 +90,8 @@ val_dataloader = dict(
 
 test_dataloader = val_dataloader
 
-val_evaluator = dict(type='IoUMetric', iou_metrics=['mIoU'])
-test_evaluator = dict(type='IoUMetric', iou_metrics=['mIoU'])
+val_evaluator = dict(type='IoUMetric', iou_metrics=['mIoU'],prefix='val')
+test_evaluator = dict(type='IoUMetric', iou_metrics=['mIoU'],prefix='test')
 
 # ============================================================================
 # 第四步：优化器

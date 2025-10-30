@@ -8,30 +8,16 @@ import torch
 import torch.nn as nn
 from typing import Optional, List, Dict
 from mmengine.model import BaseModel
-from mmseg.registry import MODELS  # ✅ 关键导入
+from mmseg.registry import MODELS
 from mmseg.models import build_backbone, build_head, build_loss
 
 from ..backbones.dic_encoder import DicEncoder
 from ..backbones.dic_decoder import DicDecoder
 
 
-@MODELS.register_module()  # ✅ 关键：必须有这个装饰器！
+@MODELS.register_module()
 class DicSegmentor(BaseModel):
-    """
-    Complete DiC Semantic Segmentation Model.
-    
-    Args:
-        arch (str): Architecture size: 'S', 'B', 'XL'. Default: 'S'.
-        num_classes (int): Number of segmentation classes. Default: 19 (Cityscapes).
-        use_gating (bool): Enable conditional gating. Default: True.
-        use_condition (bool): Enable weather condition input. Default: True.
-        use_sparse_skip (bool): Use sparse stage-level skip. Default: True.
-        num_weather_classes (int): Number of weather classes. Default: 5.
-        with_auxiliary_head (bool): Whether to add auxiliary head on decoder output.
-        loss_decode (dict): Loss function config for decoder output.
-        auxiliary_head (dict, optional): Auxiliary head config.
-        init_cfg (dict, optional): Weight initialization config.
-    """
+    """Complete DiC Semantic Segmentation Model."""
     
     def __init__(
         self,
@@ -73,9 +59,8 @@ class DicSegmentor(BaseModel):
             use_sparse_skip=use_sparse_skip,
         )
         
-        # Segmentation head: 1x1 Conv + classification
+        # Segmentation head
         d0_out_channels = self.decoder.stage_channels[0]
-        
         self.decode_head = nn.Sequential(
             nn.Conv2d(d0_out_channels, num_classes, kernel_size=1, bias=True),
         )
@@ -98,15 +83,18 @@ class DicSegmentor(BaseModel):
         mode: str = 'tensor',
         **kwargs,
     ):
-        """
-        Args:
-            inputs (torch.Tensor): Image tensor, shape [B, 3, H, W].
-            data_samples (List, optional): Data samples for training/val.
-            mode (str): Forward mode: 'tensor', 'predict', 'loss'.
+        """Forward method with input validation."""
         
-        Returns:
-            Depends on mode.
-        """
+        # ✅ 关键调试：验证输入类型
+        if not isinstance(inputs, torch.Tensor):
+            print(f"❌ ERROR: inputs should be torch.Tensor, got {type(inputs)}")
+            if isinstance(inputs, list):
+                print(f"  inputs is list with length: {len(inputs)}")
+                print(f"  first element type: {type(inputs[0]) if inputs else 'empty'}")
+            raise TypeError(f"Expected torch.Tensor, got {type(inputs)}")
+        
+        print(f"✅ DEBUG: inputs type: {type(inputs)}, shape: {inputs.shape}")
+        
         if mode == 'tensor':
             return self.forward_tensor(inputs, data_samples)
         elif mode == 'predict':
@@ -123,15 +111,50 @@ class DicSegmentor(BaseModel):
     ) -> torch.Tensor:
         """Forward pass returning segmentation logits."""
         weather_label = None
-        if data_samples is not None and len(data_samples) > 0:
-            if hasattr(data_samples[0], 'metainfo') and 'weather_label' in data_samples[0].metainfo:
-                weather_label_list = [
-                    sample.metainfo['weather_label'] for sample in data_samples
-                ]
-                weather_label = torch.tensor(
-                    weather_label_list, dtype=torch.long, device=inputs.device
-                )
         
+        # 提取天气标签
+        if data_samples is not None and len(data_samples) > 0:
+            batch_size = inputs.shape[0]
+            weather_labels = []
+            
+            for i in range(batch_size):
+                weather = 0  # 默认值
+                
+                try:
+                    if i < len(data_samples):
+                        sample = data_samples[i]
+                        
+                        # 多种方式提取天气标签
+                        if hasattr(sample, 'metainfo') and sample.metainfo is not None:
+                            weather = sample.metainfo.get('weather_label', 0)
+                            print(f"✅ Found weather_label in metainfo: {weather}")
+                        elif hasattr(sample, 'weather_label'):
+                            weather = sample.weather_label
+                            print(f"✅ Found weather_label as attribute: {weather}")
+                        elif isinstance(sample, dict):
+                            weather = sample.get('weather_label', 0)
+                            print(f"✅ Found weather_label in dict: {weather}")
+                        else:
+                            print(f"⚠ No weather_label found for sample {i}, using default: 0")
+                    
+                    weather = int(weather) if weather is not None else 0
+                    if not (0 <= weather <= 4):
+                        weather = 0
+                        
+                except Exception as e:
+                    print(f"⚠ Warning: Failed to extract weather label for sample {i}: {e}")
+                    weather = 0
+                
+                weather_labels.append(weather)
+            
+            # 创建天气标签张量
+            if weather_labels:
+                weather_label = torch.tensor(
+                    weather_labels, dtype=torch.long, device=inputs.device
+                )
+                print(f"✅ Weather labels tensor: {weather_label}")
+        
+        # 前向传播
         encoder_outputs = self.encoder(inputs, weather_label)
         decoder_output = self.decoder(encoder_outputs)
         logits = self.decode_head(decoder_output)

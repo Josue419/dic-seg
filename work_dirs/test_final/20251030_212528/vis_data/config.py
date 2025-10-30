@@ -1,6 +1,7 @@
 custom_imports = dict(
     allow_failed_imports=False, imports=[
         'mmseg_custom',
+        'mmengine.dataset',
     ])
 data_root = '/root/projects/mmseg/datasets/cityscapes'
 default_hooks = dict(
@@ -53,24 +54,24 @@ seed = 2025
 test_cfg = dict(type='TestLoop')
 test_dataloader = dict(
     batch_size=1,
+    collate_fn=dict(type='default_collate'),
     dataset=dict(
         data_prefix=dict(
             img_path='leftImg8bit/val', seg_map_path='gtFine/val'),
         data_root='/root/projects/mmseg/datasets/cityscapes',
         pipeline=[
-            dict(type='LoadImageFromFile'),
+            dict(to_float32=True, type='LoadImageFromFile'),
             dict(type='LoadAnnotations'),
-            dict(type='LoadWeatherLabel'),
             dict(keep_ratio=False, scale=(
                 512,
                 512,
             ), type='Resize'),
             dict(type='PackSegInputs'),
-            dict(type='FinalizeWeatherLabel'),
         ],
         type='CityscapesACDCSimple'),
     num_workers=0,
     persistent_workers=False,
+    pin_memory=True,
     sampler=dict(shuffle=False, type='DefaultSampler'))
 test_evaluator = dict(
     iou_metrics=[
@@ -79,73 +80,69 @@ test_evaluator = dict(
 train_cfg = dict(max_epochs=2, type='EpochBasedTrainLoop')
 train_dataloader = dict(
     batch_size=1,
+    collate_fn=dict(type='default_collate'),
     dataset=dict(
         data_prefix=dict(
             img_path='leftImg8bit/train', seg_map_path='gtFine/train'),
         data_root='/root/projects/mmseg/datasets/cityscapes',
         pipeline=[
-            dict(type='LoadImageFromFile'),
+            dict(to_float32=True, type='LoadImageFromFile'),
             dict(type='LoadAnnotations'),
-            dict(type='LoadWeatherLabel'),
             dict(keep_ratio=False, scale=(
                 512,
                 512,
             ), type='Resize'),
             dict(prob=0.5, type='RandomFlip'),
             dict(type='PackSegInputs'),
-            dict(type='FinalizeWeatherLabel'),
         ],
         type='CityscapesACDCSimple'),
     num_workers=0,
     persistent_workers=False,
+    pin_memory=True,
     sampler=dict(shuffle=True, type='DefaultSampler'))
 train_pipeline = [
-    dict(type='LoadImageFromFile'),
+    dict(to_float32=True, type='LoadImageFromFile'),
     dict(type='LoadAnnotations'),
-    dict(type='LoadWeatherLabel'),
     dict(keep_ratio=False, scale=(
         512,
         512,
     ), type='Resize'),
     dict(prob=0.5, type='RandomFlip'),
     dict(type='PackSegInputs'),
-    dict(type='FinalizeWeatherLabel'),
 ]
 val_cfg = dict(type='ValLoop')
 val_dataloader = dict(
     batch_size=1,
+    collate_fn=dict(type='default_collate'),
     dataset=dict(
         data_prefix=dict(
             img_path='leftImg8bit/val', seg_map_path='gtFine/val'),
         data_root='/root/projects/mmseg/datasets/cityscapes',
         pipeline=[
-            dict(type='LoadImageFromFile'),
+            dict(to_float32=True, type='LoadImageFromFile'),
             dict(type='LoadAnnotations'),
-            dict(type='LoadWeatherLabel'),
             dict(keep_ratio=False, scale=(
                 512,
                 512,
             ), type='Resize'),
             dict(type='PackSegInputs'),
-            dict(type='FinalizeWeatherLabel'),
         ],
         type='CityscapesACDCSimple'),
     num_workers=0,
     persistent_workers=False,
+    pin_memory=True,
     sampler=dict(shuffle=False, type='DefaultSampler'))
 val_evaluator = dict(
     iou_metrics=[
         'mIoU',
     ], type='IoUMetric')
 val_pipeline = [
-    dict(type='LoadImageFromFile'),
+    dict(to_float32=True, type='LoadImageFromFile'),
     dict(type='LoadAnnotations'),
-    dict(type='LoadWeatherLabel'),
     dict(keep_ratio=False, scale=(
         512,
         512,
     ), type='Resize'),
     dict(type='PackSegInputs'),
-    dict(type='FinalizeWeatherLabel'),
 ]
-work_dir = 'work_dirs/dic_debug_final'
+work_dir = 'work_dirs/test_final'

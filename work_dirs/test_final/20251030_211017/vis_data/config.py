@@ -60,17 +60,16 @@ test_dataloader = dict(
         pipeline=[
             dict(type='LoadImageFromFile'),
             dict(type='LoadAnnotations'),
-            dict(type='LoadWeatherLabel'),
             dict(keep_ratio=False, scale=(
                 512,
                 512,
             ), type='Resize'),
             dict(type='PackSegInputs'),
-            dict(type='FinalizeWeatherLabel'),
         ],
         type='CityscapesACDCSimple'),
     num_workers=0,
     persistent_workers=False,
+    pin_memory=True,
     sampler=dict(shuffle=False, type='DefaultSampler'))
 test_evaluator = dict(
     iou_metrics=[
@@ -86,30 +85,27 @@ train_dataloader = dict(
         pipeline=[
             dict(type='LoadImageFromFile'),
             dict(type='LoadAnnotations'),
-            dict(type='LoadWeatherLabel'),
             dict(keep_ratio=False, scale=(
                 512,
                 512,
             ), type='Resize'),
             dict(prob=0.5, type='RandomFlip'),
             dict(type='PackSegInputs'),
-            dict(type='FinalizeWeatherLabel'),
         ],
         type='CityscapesACDCSimple'),
     num_workers=0,
     persistent_workers=False,
+    pin_memory=True,
     sampler=dict(shuffle=True, type='DefaultSampler'))
 train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations'),
-    dict(type='LoadWeatherLabel'),
     dict(keep_ratio=False, scale=(
         512,
         512,
     ), type='Resize'),
     dict(prob=0.5, type='RandomFlip'),
     dict(type='PackSegInputs'),
-    dict(type='FinalizeWeatherLabel'),
 ]
 val_cfg = dict(type='ValLoop')
 val_dataloader = dict(
@@ -121,17 +117,16 @@ val_dataloader = dict(
         pipeline=[
             dict(type='LoadImageFromFile'),
             dict(type='LoadAnnotations'),
-            dict(type='LoadWeatherLabel'),
             dict(keep_ratio=False, scale=(
                 512,
                 512,
             ), type='Resize'),
             dict(type='PackSegInputs'),
-            dict(type='FinalizeWeatherLabel'),
         ],
         type='CityscapesACDCSimple'),
     num_workers=0,
     persistent_workers=False,
+    pin_memory=True,
     sampler=dict(shuffle=False, type='DefaultSampler'))
 val_evaluator = dict(
     iou_metrics=[
@@ -140,12 +135,10 @@ val_evaluator = dict(
 val_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations'),
-    dict(type='LoadWeatherLabel'),
     dict(keep_ratio=False, scale=(
         512,
         512,
     ), type='Resize'),
     dict(type='PackSegInputs'),
-    dict(type='FinalizeWeatherLabel'),
 ]
-work_dir = 'work_dirs/dic_debug_final'
+work_dir = 'work_dirs/test_final'
