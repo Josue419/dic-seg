@@ -1,0 +1,67 @@
+"""
+运行时配置（日志、checkpoint、评估等）
+
+所有实验配置共享此配置
+"""
+
+# ============================================================================
+# 模块初始化：确保自定义模块被正确注册
+# ============================================================================
+
+custom_imports = dict(
+    imports=[
+        'mmseg.datasets.transforms.formatting',  # 用于注册 PackSegInputs
+        'mmseg_custom.models'                    # 用于注册你的自定义模型
+    ],
+    allow_failed_imports=False
+)
+
+# ============================================================================
+# 默认设置
+# ============================================================================
+
+default_scope = 'mmseg'
+env_cfg = dict(cudnn_benchmark=True)
+log_processor = dict(by_epoch=True)
+log_level = 'INFO'
+
+# ============================================================================
+# Checkpoint 保存策略
+# ============================================================================
+
+default_hooks = dict(
+    timer=dict(type='IterTimerHook'),
+    logger=dict(type='LoggerHook', interval=50),
+    param_scheduler=dict(type='ParamSchedulerHook'),
+    checkpoint=dict(
+        type='CheckpointHook',
+        by_epoch=True,
+        interval=1,
+        max_keep_ckpts=3,
+        save_last=True,
+        save_best='mIoU',
+    ),
+    sampler_seed=dict(type='DistSamplerSeedHook'),
+)
+
+# ============================================================================
+# 评估配置
+# ============================================================================
+
+# 评估间隔（每 5 个 epoch）
+evaluation = dict(interval=5, metric='mIoU', save_best='mIoU')
+
+# ============================================================================
+# Checkpoint 加载
+# ============================================================================
+
+load_from = None
+resume_from = None
+resume = False
+
+# ============================================================================
+# 工作目录（默认值，可被实验配置覆盖）
+# ============================================================================
+
+work_dir = './work_dirs'
+exp_name = 'default_exp'

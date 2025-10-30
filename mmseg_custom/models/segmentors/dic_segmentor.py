@@ -8,12 +8,14 @@ import torch
 import torch.nn as nn
 from typing import Optional, List, Dict
 from mmengine.model import BaseModel
+from mmseg.registry import MODELS  # ✅ 关键导入
 from mmseg.models import build_backbone, build_head, build_loss
 
 from ..backbones.dic_encoder import DicEncoder
 from ..backbones.dic_decoder import DicDecoder
 
 
+@MODELS.register_module()  # ✅ 关键：必须有这个装饰器！
 class DicSegmentor(BaseModel):
     """
     Complete DiC Semantic Segmentation Model.
@@ -21,8 +23,8 @@ class DicSegmentor(BaseModel):
     Args:
         arch (str): Architecture size: 'S', 'B', 'XL'. Default: 'S'.
         num_classes (int): Number of segmentation classes. Default: 19 (Cityscapes).
-        use_gating (bool): 启用 conditional gating. Default: True.
-        use_condition (bool): 启用 weather condition input. Default: True.
+        use_gating (bool): Enable conditional gating. Default: True.
+        use_condition (bool): Enable weather condition input. Default: True.
         use_sparse_skip (bool): Use sparse stage-level skip. Default: True.
         num_weather_classes (int): Number of weather classes. Default: 5.
         with_auxiliary_head (bool): Whether to add auxiliary head on decoder output.
@@ -72,15 +74,13 @@ class DicSegmentor(BaseModel):
         )
         
         # Segmentation head: 1x1 Conv + classification
-        # D0 output channels = stage_channels[0] (E0 output channels)
-        # For DiC-S: 96, DiC-B: 128, DiC-XL: 160
-        d0_out_channels = self.decoder.stage_channels[0]  # ✅ 改为 [0]，取 E0 通道数
+        d0_out_channels = self.decoder.stage_channels[0]
         
         self.decode_head = nn.Sequential(
             nn.Conv2d(d0_out_channels, num_classes, kernel_size=1, bias=True),
         )
         
-        # Optional: Auxiliary head (not implemented yet, placeholder)
+        # Optional: Auxiliary head
         if with_auxiliary_head and auxiliary_head is not None:
             self.auxiliary_head = build_head(auxiliary_head)
         else:
@@ -102,7 +102,6 @@ class DicSegmentor(BaseModel):
         Args:
             inputs (torch.Tensor): Image tensor, shape [B, 3, H, W].
             data_samples (List, optional): Data samples for training/val.
-                Each sample should have 'img_metas' with 'weather_label' key.
             mode (str): Forward mode: 'tensor', 'predict', 'loss'.
         
         Returns:
@@ -122,17 +121,7 @@ class DicSegmentor(BaseModel):
         inputs: torch.Tensor,
         data_samples: Optional[List] = None,
     ) -> torch.Tensor:
-        """
-        Forward pass returning segmentation logits.
-        
-        Args:
-            inputs (torch.Tensor): Image tensor, shape [B, 3, H, W].
-            data_samples (List, optional): Data samples with weather_label.
-        
-        Returns:
-            torch.Tensor: Segmentation logits, shape [B, num_classes, H, W].
-        """
-        # Extract weather label from data_samples if available
+        """Forward pass returning segmentation logits."""
         weather_label = None
         if data_samples is not None and len(data_samples) > 0:
             if hasattr(data_samples[0], 'metainfo') and 'weather_label' in data_samples[0].metainfo:
@@ -143,14 +132,9 @@ class DicSegmentor(BaseModel):
                     weather_label_list, dtype=torch.long, device=inputs.device
                 )
         
-        # Encoder: returns list of 5 stage outputs [E0, E1, E2, E3, E4]
-        encoder_outputs = self.encoder(inputs, weather_label)  # List of 5 tensors
-        
-        # Decoder: takes encoder outputs, returns D0 (same spatial size as E0)
-        decoder_output = self.decoder(encoder_outputs)  # [B, 96, H, W]
-        
-        # Segmentation head: 1x1 Conv to project to num_classes
-        logits = self.decode_head(decoder_output)  # [B, num_classes, H, W]
+        encoder_outputs = self.encoder(inputs, weather_label)
+        decoder_output = self.decoder(encoder_outputs)
+        logits = self.decode_head(decoder_output)
         
         return logits
     
@@ -159,14 +143,9 @@ class DicSegmentor(BaseModel):
         inputs: torch.Tensor,
         data_samples: Optional[List] = None,
     ) -> List[Dict]:
-        """
-        Forward pass for prediction/inference.
-        
-        Returns:
-            List of predictions with segmentation maps.
-        """
+        """Forward pass for prediction."""
         logits = self.forward_tensor(inputs, data_samples)
-        pred_label = logits.argmax(dim=1)  # [B, H, W]
+        pred_label = logits.argmax(dim=1)
         
         predictions = []
         for i in range(pred_label.shape[0]):
@@ -179,31 +158,19 @@ class DicSegmentor(BaseModel):
         inputs: torch.Tensor,
         data_samples: List,
     ) -> Dict[str, torch.Tensor]:
-        """
-        Forward pass for training with loss computation.
-        
-        Args:
-            inputs (torch.Tensor): Image tensor.
-            data_samples (List): Data samples with 'gt_seg_map' (ground truth labels).
-        
-        Returns:
-            Dict of losses.
-        """
+        """Forward pass for training with loss."""
         logits = self.forward_tensor(inputs, data_samples)
         
-        # Extract ground truth labels
         gt_labels = torch.stack([
-            sample.gt_sem_seg.data.squeeze()  # [H, W]
+            sample.gt_sem_seg.data.squeeze()
             for sample in data_samples
-        ])  # [B, H, W]
+        ])
         
-        # Compute loss
         loss = self.criterion(logits, gt_labels)
         
         losses = {'loss_seg': loss}
         
         if self.auxiliary_head is not None:
-            # Auxiliary head loss computation (optional, not implemented)
             pass
         
         return losses
