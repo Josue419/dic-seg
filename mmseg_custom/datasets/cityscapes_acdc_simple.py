@@ -1,13 +1,15 @@
 """
-极简 Cityscapes + ACDC 数据加载器 - 彻底修复版
+极简 Cityscapes + ACDC 数据加载器 - 最终修复版
 
 关键修复：
-- 确保数据字典包含所有必需键
-- 防止 mmcv LoadAnnotations 尝试加载 instances
-- 正确传递天气标签
+- 正确的标签验证逻辑：只检查非 255 的值是否在 [0, 18] 范围内
+- 自动修复无效标签值为 255
+- 双重保护：文件级 + 张量级修复
 """
 
 import logging
+import torch
+import numpy as np
 from pathlib import Path
 from typing import List, Dict, Optional
 
@@ -97,25 +99,24 @@ class CityscapesACDCSimple(BaseSegDataset):
                 skip_count += 1
                 continue
             
+            # ✅ 新增：验证并修复标签文件
+            if not self._validate_and_fix_label_file(seg_path):
+                print(f"⚠ 跳过无效标签文件: {seg_path.name}")
+                skip_count += 1
+                continue
+            
             # 推断天气标签
             weather_label = self._get_weather_label(str(img_path))
             
-            # ✅ 关键修复：使用最标准的 MMSeg 分割任务数据格式
+            # ✅ 使用最标准的 MMSeg 分割任务数据格式
             data_info = dict(
-                # 基本路径
                 img_path=str(img_path),
                 seg_map_path=str(seg_path),
-                
-                # ✅ 分割任务必需键
                 seg_fields=[],                   # LoadAnnotations 会添加 'gt_seg_map'
                 reduce_zero_label=False,         # Cityscapes 不需要减少零标签
-                
-                # ✅ 防止检测任务加载的键
-                bbox_fields=[],
-                mask_fields=[],
-                
-                # 自定义字段
-                weather_label=weather_label,
+                bbox_fields=[],                  # 防止检测任务加载
+                mask_fields=[],                  # 防止实例分割加载
+                weather_label=weather_label,     # 自定义天气标签
             )
             
             data_list.append(data_info)
@@ -125,10 +126,71 @@ class CityscapesACDCSimple(BaseSegDataset):
         
         print(f"✓ 成功加载 {len(data_list)} 个数据对")
         if skip_count > 0:
-            print(f"⚠ 跳过 {skip_count} 个缺失标签的样本")
+            print(f"⚠ 跳过 {skip_count} 个无效样本")
         print(f"{'='*70}\n")
         
         return data_list
+    
+    def _validate_and_fix_label_file(self, seg_path: Path) -> bool:
+        """
+        验证并修复标签文件 - 正确处理 255（ignore_index）
+        
+        ✅ 修复逻辑：
+        - 255 是合法的 ignore_index，不需要修复
+        - 只有非 255 且超出 [0, 18] 范围的值才需要修复为 255
+        """
+        try:
+            # 使用 PIL 加载标签文件
+            from PIL import Image
+            label_img = Image.open(seg_path)
+            label_array = np.array(label_img)
+            
+            # 检查标签值范围
+            unique_values = np.unique(label_array)
+            
+            # ✅ 关键修复：正确的验证逻辑
+            # - 0-18: 有效类别标签
+            # - 255: 合法的 ignore_index
+            # - 其他值: 需要修复为 255 的无效值
+            valid_class_labels = set(range(19))  # {0, 1, 2, ..., 18}
+            ignore_label = 255
+            
+            # 找出需要修复的无效值：既不是有效类别，也不是 ignore_index
+            invalid_values = []
+            for val in unique_values:
+                if val not in valid_class_labels and val != ignore_label:
+                    invalid_values.append(val)
+            
+            if invalid_values:
+                print(f"🔧 修复标签文件 {seg_path.name}:")
+                print(f"   原始唯一值: {sorted(unique_values)}")
+                print(f"   无效值: {sorted(invalid_values)} (将转为 255)")
+                
+                # ✅ 关键修复：只修复真正的无效值
+                fixed_array = label_array.copy()
+                for invalid_val in invalid_values:
+                    fixed_array[label_array == invalid_val] = 255
+                
+                # 保存修复后的标签文件
+                fixed_img = Image.fromarray(fixed_array.astype(np.uint8), mode='L')
+                fixed_img.save(seg_path)
+                
+                fixed_unique = np.unique(fixed_array)
+                print(f"   修复后唯一值: {sorted(fixed_unique)}")
+                print(f"   ✅ 已保存修复后的标签文件")
+            else:
+                # 所有值都是有效的
+                valid_count = sum(1 for val in unique_values if val in valid_class_labels)
+                ignore_count = sum(1 for val in unique_values if val == ignore_label)
+                print(f"✅ 标签文件 {seg_path.name} 验证通过:")
+                print(f"   有效类别值: {valid_count} 种")
+                print(f"   ignore 值(255): {'是' if ignore_count > 0 else '否'}")
+            
+            return True
+            
+        except Exception as e:
+            print(f"❌ 无法处理标签文件 {seg_path.name}: {e}")
+            return False
     
     def _get_weather_label(self, path: str) -> int:
         """推断天气标签"""
@@ -146,7 +208,7 @@ class CityscapesACDCSimple(BaseSegDataset):
             return 0  # clear
     
     def prepare_data(self, idx: int) -> Dict:
-        """准备数据 - 确保所有必需键存在"""
+        """准备数据 - 带张量级标签验证"""
         # 获取数据信息
         data_info = self.get_data_info(idx)
         
@@ -159,11 +221,41 @@ class CityscapesACDCSimple(BaseSegDataset):
         # 调用 pipeline
         result = self.pipeline(data_info)
         
-        # 将天气标签添加到 data_samples.metainfo
+        # ✅ 关键修复：在 pipeline 处理后再次验证标签张量
+        if 'data_samples' in result and hasattr(result['data_samples'], 'gt_sem_seg'):
+            gt_seg = result['data_samples'].gt_sem_seg.data
+            
+            # ✅ 正确的张量验证逻辑：只检查非 255 的值
+            unique_values = torch.unique(gt_seg)
+            
+            # 找出需要修复的无效值：不在 [0, 18] 且不是 255
+            invalid_mask = torch.zeros_like(gt_seg, dtype=torch.bool)
+            for val in unique_values:
+                if 0 <= val <= 18 or val == 255:
+                    continue  # 有效值，跳过
+                else:
+                    invalid_mask |= (gt_seg == val)  # 标记为无效
+            
+            if invalid_mask.any():
+                invalid_count = invalid_mask.sum().item()
+                print(f"🔧 Pipeline后发现 {invalid_count} 个无效标签像素，自动修复为 255")
+                print(f"   处理前唯一值: {unique_values.tolist()}")
+                
+                # 修复无效值
+                result['data_samples'].gt_sem_seg.data[invalid_mask] = 255
+                
+                fixed_unique = torch.unique(result['data_samples'].gt_sem_seg.data)
+                print(f"   处理后唯一值: {fixed_unique.tolist()}")
+            else:
+                # 验证通过，打印统计信息
+                valid_classes = [val.item() for val in unique_values if 0 <= val <= 18]
+                has_ignore = 255 in unique_values
+                print(f"✅ 张量验证通过: {len(valid_classes)} 种有效类别, ignore={'是' if has_ignore else '否'}")
+        
+        # 添加天气标签到 metainfo
         if 'data_samples' in result and result['data_samples'] is not None:
             weather_label = data_info.get('weather_label', 0)
             
-            # 初始化 metainfo
             if not hasattr(result['data_samples'], 'metainfo'):
                 result['data_samples'].metainfo = {}
             elif result['data_samples'].metainfo is None:

@@ -188,7 +188,7 @@ class DicSegmentor(BaseModel):
             sample.gt_sem_seg.data.squeeze()
             for sample in data_samples
         ])
-        
+
         loss = self.criterion(logits, gt_labels)
         
         losses = {'loss_seg': loss}
