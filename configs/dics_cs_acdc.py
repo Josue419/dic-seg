@@ -1,0 +1,99 @@
+"""
+DiC-S 联合训练配置：Cityscapes + ACDC 完整训练
+
+用途：训练天气鲁棒分割模型，包含所有天气条件
+
+继承：
+- 模型：DiC-S (启用条件机制)
+- 数据集：Cityscapes + ACDC 联合
+- 优化器：AdamW (lr=6e-5)
+- 学习率：PolyLR (200 epochs)
+- 运行时：标准配置
+
+数据组成：
+- Cityscapes train: ~2975 samples (clear)
+- ACDC fog train: ~400 samples
+- ACDC night train: ~400 samples  
+- ACDC rain train: ~400 samples
+- ACDC snow train: ~400 samples
+- 总计: ~4575 samples/epoch
+"""
+
+_base_ = [
+    '_base_/models/dic_s.py',
+    '_base_/datasets/cs_acdc.py',
+    '_base_/schedules/poly_200e.py',
+    '_base_/default_runtime.py',
+]
+custom_imports = dict(
+    imports=['mmseg_custom','mmengine.dataset'],  
+    allow_failed_imports=False
+)
+# ============================================================================
+# 模型配置覆盖 - 启用所有条件机制
+# ============================================================================
+
+model = dict(
+    type='DicSegmentor',
+    arch='S',
+    num_classes=19,
+    use_gating=True,        # 启用条件门控
+    use_condition=True,     # 启用天气条件
+    use_sparse_skip=True,   # 启用稀疏跳跃连接
+    num_weather_classes=5,  # 5种天气类型
+)
+
+# ============================================================================
+# 训练配置优化
+# ============================================================================
+
+# 联合训练需要更多 epoch 收敛
+train_cfg = dict(type='EpochBasedTrainLoop', max_epochs=300)
+
+# 学习率调度适配
+param_scheduler = [
+    dict(
+        type='PolyLR',
+        eta_min=1e-6,
+        power=0.9,
+        begin=0,
+        end=300,  # 匹配 max_epochs
+        by_epoch=True,
+    )
+]
+
+# 数据加载优化
+train_dataloader = dict(
+    batch_size=1,  # 根据显存调整
+    num_workers=0,
+    persistent_workers=False,
+)
+
+val_dataloader = dict(
+    batch_size=2,
+    num_workers=4,
+    persistent_workers=True,
+)
+
+# ============================================================================
+# 评估与保存策略
+# ============================================================================
+
+# 更频繁的评估
+default_hooks = dict(
+    checkpoint=dict(
+        type='CheckpointHook',
+        by_epoch=True,
+        interval=5,  # 每 5 epoch 保存
+        max_keep_ckpts=5,
+        save_best='mIoU',
+        save_last=True,
+    ),
+)
+
+# ============================================================================
+# 工作目录
+# ============================================================================
+
+work_dir = './work_dirs/dic_s_cityscapes_acdc_joint'
+exp_name = 'dics_cs_acdc'

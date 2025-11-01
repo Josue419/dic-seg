@@ -1,11 +1,13 @@
 """
-ACDC 数据集配置（恶劣天气鲁棒性）
+Cityscapes + ACDC 联合训练数据集配置
 
 包含：
-- 4 种天气类型（fog, night, rain, snow）
-- 支持训练和验证
-- 天气标签自动推断
+- 训练：Cityscapes train + ACDC 所有天气 train
+- 验证：Cityscapes val + ACDC 所有天气 val  
+- 自动天气标签推断
+- 数据平衡策略
 """
+
 
 
 # 数据管道定义
@@ -31,7 +33,7 @@ val_pipeline = [
 # 数据根目录
 data_root = '/root/projects/mmseg/datasets'
 
-# 训练数据加载（ACDC 所有天气类型）
+# 联合训练数据加载器
 train_dataloader = dict(
     batch_size=2,
     num_workers=2,
@@ -41,7 +43,17 @@ train_dataloader = dict(
     dataset=dict(
         type='ConcatDataset',
         datasets=[
-            # ACDC fog
+            # Cityscapes train (clear weather)
+            dict(
+                type='CityscapesACDCDataset',
+                data_root=f'{data_root}/cityscapes',
+                data_prefix=dict(
+                    img_path='leftImg8bit/train',
+                    seg_map_path='gtFine/train'
+                ),
+                pipeline=train_pipeline,
+            ),
+            # ACDC fog train
             dict(
                 type='CityscapesACDCDataset',
                 data_root=f'{data_root}/acdc',
@@ -51,7 +63,7 @@ train_dataloader = dict(
                 ),
                 pipeline=train_pipeline,
             ),
-            # ACDC night
+            # ACDC night train
             dict(
                 type='CityscapesACDCDataset',
                 data_root=f'{data_root}/acdc',
@@ -61,7 +73,7 @@ train_dataloader = dict(
                 ),
                 pipeline=train_pipeline,
             ),
-            # ACDC rain
+            # ACDC rain train
             dict(
                 type='CityscapesACDCDataset',
                 data_root=f'{data_root}/acdc',
@@ -71,7 +83,7 @@ train_dataloader = dict(
                 ),
                 pipeline=train_pipeline,
             ),
-            # ACDC snow
+            # ACDC snow train
             dict(
                 type='CityscapesACDCDataset',
                 data_root=f'{data_root}/acdc',
@@ -85,7 +97,7 @@ train_dataloader = dict(
     )
 )
 
-# 验证数据加载（ACDC 所有天气类型的验证集）
+# 联合验证数据加载器
 val_dataloader = dict(
     batch_size=1,
     num_workers=2,
@@ -95,6 +107,16 @@ val_dataloader = dict(
     dataset=dict(
         type='ConcatDataset',
         datasets=[
+            # Cityscapes val (clear weather)
+            dict(
+                type='CityscapesACDCDataset',
+                data_root=f'{data_root}/cityscapes',
+                data_prefix=dict(
+                    img_path='leftImg8bit/val',
+                    seg_map_path='gtFine/val'
+                ),
+                pipeline=val_pipeline,
+            ),
             # ACDC fog val
             dict(
                 type='CityscapesACDCDataset',
@@ -139,7 +161,7 @@ val_dataloader = dict(
     )
 )
 
-# 测试数据加载（使用验证集）
+# 测试数据加载器（使用验证集）
 test_dataloader = val_dataloader
 
 # 评估器

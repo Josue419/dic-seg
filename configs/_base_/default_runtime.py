@@ -8,13 +8,7 @@
 # 模块初始化：确保自定义模块被正确注册
 # ============================================================================
 
-custom_imports = dict(
-    imports=[
-        'mmseg.datasets.transforms.formatting',  # 用于注册 PackSegInputs
-        'mmseg_custom.models'                    # 用于注册你的自定义模型
-    ],
-    allow_failed_imports=False
-)
+
 
 # ============================================================================
 # 默认设置
