@@ -52,4 +52,6 @@ __all__ = [
     'DicSegmentor',
     'CityscapesACDCDataset',
     'CityscapesACDCSimple',
+    'LoadWeatherLabel', 
+    'FinalizeWeatherLabel'
 ]

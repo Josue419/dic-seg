@@ -1,14 +1,15 @@
 """
-完整版 Cityscapes + ACDC 数据加载器
+完整版 Cityscapes + ACDC 数据加载器 - 支持预处理标签
 
-与 Simple 版本的区别：
-- 没有调试限制（加载所有样本）
-- 更完善的错误处理
-- 支持更多数据格式
+关键功能：
+- 自动使用预处理标签（.processed_labels 目录）
+- 支持 Cityscapes 和 ACDC 格式
+- 自动推断天气标签
 - 生产就绪的性能优化
 """
 
 import logging
+import json
 from pathlib import Path
 from typing import List, Dict, Optional
 
@@ -34,8 +35,45 @@ class CityscapesACDCDataset(BaseSegDataset):
                  [0, 80, 100], [0, 0, 230], [119, 11, 32]]
     )
     
+    def __init__(self, use_processed_labels: bool = True, **kwargs):
+        """
+        Args:
+            use_processed_labels: 是否使用预处理的标签文件
+        """
+        super().__init__(**kwargs)
+        self.use_processed_labels = use_processed_labels
+        
+        if use_processed_labels:
+            self.processed_root = Path(self.data_root) / '.processed_labels'
+            if not self._check_preprocessing_completed():
+                logger.warning("数据集可能未完成预处理，建议运行 tools/prep_labels.py")
+    
+    def _check_preprocessing_completed(self) -> bool:
+        """检查数据集是否已完成预处理"""
+        metadata_file = self.processed_root / 'preprocessing_metadata.json'
+        return metadata_file.exists()
+    
+    def _get_processed_label_path(self, original_path: Path) -> Path:
+        """获取预处理标签路径"""
+        if not self.use_processed_labels:
+            return original_path
+        
+        try:
+            rel_path = original_path.relative_to(Path(self.data_root))
+        except ValueError:
+            rel_path = Path(original_path.name)
+        
+        processed_path = self.processed_root / rel_path
+        
+        # 如果预处理文件存在，使用预处理版本
+        if processed_path.exists():
+            return processed_path
+        else:
+            logger.warning(f"预处理标签不存在，使用原始标签: {original_path.name}")
+            return original_path
+    
     def load_data_list(self) -> List[Dict]:
-        """加载数据列表 - 生产版本（无调试限制）"""
+        """加载数据列表 - 支持预处理标签"""
         
         if isinstance(self.data_root, str):
             data_root = Path(self.data_root)
@@ -48,11 +86,16 @@ class CityscapesACDCDataset(BaseSegDataset):
         img_dir = data_root / self.data_prefix['img_path']
         seg_dir = data_root / self.data_prefix['seg_map_path']
         
+        logger.info(f"Loading dataset from {data_root}")
+        logger.info(f"  Image dir: {img_dir}")
+        logger.info(f"  Segmentation dir: {seg_dir}")
+        logger.info(f"  Use processed labels: {self.use_processed_labels}")
+        
         if not img_dir.exists() or not seg_dir.exists():
             logger.error(f"Directory not found: {img_dir} or {seg_dir}")
             return []
         
-        # 查找所有图像文件（没有数量限制）
+        # 查找所有图像文件
         img_files = sorted(
             list(img_dir.rglob('*.png')) + 
             list(img_dir.rglob('*.jpg'))
@@ -62,7 +105,7 @@ class CityscapesACDCDataset(BaseSegDataset):
             logger.error(f"No image files found in {img_dir}")
             return []
         
-        logger.info(f"Found {len(img_files)} images in {img_dir}")
+        logger.info(f"Found {len(img_files)} images")
         
         # 配对图像和标签
         data_list = []
@@ -85,18 +128,21 @@ class CityscapesACDCDataset(BaseSegDataset):
                 # 通用格式
                 seg_name = img_path.stem + '_gt.png'
             
-            seg_path = seg_dir / rel_path.parent / seg_name
+            original_seg_path = seg_dir / rel_path.parent / seg_name
             
-            if not seg_path.exists():
+            if not original_seg_path.exists():
                 skip_count += 1
                 continue
+            
+            # 获取最终的标签路径（可能是预处理版本）
+            final_seg_path = self._get_processed_label_path(original_seg_path)
             
             # 推断天气标签
             weather_label = self._get_weather_label(str(img_path))
             
             data_info = dict(
                 img_path=str(img_path),
-                seg_map_path=str(seg_path),
+                seg_map_path=str(final_seg_path),  # 使用最终路径
                 seg_fields=[],
                 reduce_zero_label=False,
                 bbox_fields=[],
@@ -144,7 +190,7 @@ class CityscapesACDCDataset(BaseSegDataset):
         return distribution
     
     def prepare_data(self, idx: int) -> Dict:
-        """准备数据 - 生产版本"""
+        """准备数据"""
         # 获取数据信息
         data_info = self.get_data_info(idx)
         

@@ -15,4 +15,5 @@ model = dict(
     use_condition=True,
     use_sparse_skip=True,
     num_weather_classes=5,
+    gradient_checkpointing=True,  # ✅ 启用梯度检查点
 )

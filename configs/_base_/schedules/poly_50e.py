@@ -15,7 +15,7 @@ optimizer = dict(
     weight_decay=0.01,
 )
 optim_wrapper = dict(
-    type='OptimWrapper',
+    type='AmpOptimWrapper',
     optimizer=optimizer,
     clip_grad=None,
 )

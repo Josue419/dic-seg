@@ -40,3 +40,6 @@ psutil>=5.9.0,<5.10.0
 # Optional: Model Export & Deployment
 onnx>=1.14.0,<1.16.0
 onnxruntime>=1.16.0,<1.17.0
+
+ftfy>=6.1.1,<6.2.0
+regex>=2023.6.3,<2024.0.0

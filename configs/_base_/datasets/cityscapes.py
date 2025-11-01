@@ -1,33 +1,41 @@
 """
-Cityscapes 数据集配置（晴天基准）
+Cityscapes 数据集配置 - 修复版
 
-包含：
-- train/val/test dataloader
-- 统一的数据 pipeline
-- 天气标签默认为 0 (clear)
+关键修复：
+1. 正确的数据归一化参数
+2. 使用预处理标签
+3. 统一的 data_root 路径
 """
 
-
-
-# 数据管道定义
+# 数据管道定义 - 修复版
 train_pipeline = [
-    dict(type='LoadImageFromFile', to_float32=True, color_type='unchanged'),
-    dict(type='LoadAnnotations'),
+    dict(type='LoadImageFromFile', to_float32=True, color_type='color'),
+    dict(type='LoadAnnotations', reduce_zero_label=False),
     dict(type='Resize', scale=(1024, 2048), keep_ratio=True),
     dict(type='RandomCrop', crop_size=(512, 512), cat_max_ratio=0.75),
     dict(type='RandomFlip', prob=0.5),
     dict(type='PhotoMetricDistortion'),
+    # 修复：使用正确的 ImageNet 归一化参数
+    dict(type='Normalize', 
+         mean=[123.675, 116.28, 103.53], 
+         std=[58.395, 57.12, 57.375], 
+         to_rgb=True),
     dict(type='PackSegInputs'),
 ]
 
 val_pipeline = [
-    dict(type='LoadImageFromFile', to_float32=True, color_type='unchanged'),
-    dict(type='LoadAnnotations'),
+    dict(type='LoadImageFromFile', to_float32=True, color_type='color'),
+    dict(type='LoadAnnotations', reduce_zero_label=False),
     dict(type='Resize', scale=(512, 1024), keep_ratio=False),
+    # 修复：验证时也需要归一化
+    dict(type='Normalize', 
+         mean=[123.675, 116.28, 103.53], 
+         std=[58.395, 57.12, 57.375], 
+         to_rgb=True),
     dict(type='PackSegInputs'),
 ]
 
-# 数据根目录
+# 修复：统一的数据根目录
 data_root = '/root/projects/mmseg/datasets/cityscapes'
 
 # 训练数据加载
@@ -45,6 +53,7 @@ train_dataloader = dict(
             seg_map_path='gtFine/train'
         ),
         pipeline=train_pipeline,
+        use_processed_labels=True,  # 修复：启用预处理标签
     )
 )
 
@@ -63,6 +72,7 @@ val_dataloader = dict(
             seg_map_path='gtFine/val'
         ),
         pipeline=val_pipeline,
+        use_processed_labels=True,
     )
 )
 
@@ -81,6 +91,7 @@ test_dataloader = dict(
             seg_map_path='gtFine/val'
         ),
         pipeline=val_pipeline,
+        use_processed_labels=True,
     )
 )
 

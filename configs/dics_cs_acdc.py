@@ -41,6 +41,7 @@ model = dict(
     use_condition=True,     # 启用天气条件
     use_sparse_skip=True,   # 启用稀疏跳跃连接
     num_weather_classes=5,  # 5种天气类型
+    gradient_checkpointing=True,  # ✅ 启用梯度检查点
 )
 
 # ============================================================================
@@ -64,8 +65,8 @@ param_scheduler = [
 
 # 数据加载优化
 train_dataloader = dict(
-    batch_size=1,  # 根据显存调整
-    num_workers=0,
+    batch_size=4,  # 根据显存调整
+    num_workers=4,
     persistent_workers=False,
 )
 

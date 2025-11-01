@@ -1,15 +1,18 @@
 """
-Complete DiC Segmentation Model integrating Encoder + Decoder + Head.
+DiC Segmentation Model - 显存优化版本
 
-This is the main model interface for MMSegmentation.
+关键优化：
+1. 梯度检查点（Gradient Checkpointing）
+2. 优化的天气标签处理
+3. 内存友好的前向传播
 """
 
 import torch
 import torch.nn as nn
+from torch.utils.checkpoint import checkpoint
 from typing import Optional, List, Dict
 from mmengine.model import BaseModel
 from mmseg.registry import MODELS
-from mmseg.models import build_backbone, build_head, build_loss
 
 from ..backbones.dic_encoder import DicEncoder
 from ..backbones.dic_decoder import DicDecoder
@@ -17,7 +20,7 @@ from ..backbones.dic_decoder import DicDecoder
 
 @MODELS.register_module()
 class DicSegmentor(BaseModel):
-    """Complete DiC Semantic Segmentation Model."""
+    """DiC Semantic Segmentation Model - 显存优化版"""
     
     def __init__(
         self,
@@ -27,20 +30,19 @@ class DicSegmentor(BaseModel):
         use_condition: bool = True,
         use_sparse_skip: bool = True,
         num_weather_classes: int = 5,
-        with_auxiliary_head: bool = False,
-        loss_decode: Optional[Dict] = None,
-        auxiliary_head: Optional[Dict] = None,
-        init_cfg: Optional[Dict] = None,
+        gradient_checkpointing: bool = False,
+        memory_efficient: bool = False,
         **kwargs,
     ):
-        super().__init__(init_cfg=init_cfg)
+        super().__init__()
         
         self.arch = arch
         self.num_classes = num_classes
         self.use_condition = use_condition
         self.use_gating = use_gating
         self.use_sparse_skip = use_sparse_skip
-        self.with_auxiliary_head = with_auxiliary_head
+        self.gradient_checkpointing = gradient_checkpointing
+        self.memory_efficient = memory_efficient
         
         # Encoder
         self.encoder = DicEncoder(
@@ -65,22 +67,19 @@ class DicSegmentor(BaseModel):
             nn.Conv2d(d0_out_channels, num_classes, kernel_size=1, bias=True),
         )
         
-        # Optional: Auxiliary head
-        if with_auxiliary_head and auxiliary_head is not None:
-            self.auxiliary_head = build_head(auxiliary_head)
-        else:
-            self.auxiliary_head = None
-        
         # Loss function
         self.criterion = nn.CrossEntropyLoss(ignore_index=255)
     
-    def forward(
-        self,
-        inputs: torch.Tensor,
-        data_samples: Optional[List] = None,
-        mode: str = 'tensor',
-        **kwargs,
-    ):
+    def enable_gradient_checkpointing(self):
+        """启用梯度检查点"""
+        self.gradient_checkpointing = True
+    
+    def enable_memory_efficient_mode(self):
+        """启用显存效率模式"""
+        self.memory_efficient = True
+        self.gradient_checkpointing = True
+    
+    def forward(self, inputs: torch.Tensor, data_samples: Optional[List] = None, mode: str = 'tensor', **kwargs):
         """Forward method."""
         if mode == 'tensor':
             return self.forward_tensor(inputs, data_samples)
@@ -91,60 +90,74 @@ class DicSegmentor(BaseModel):
         else:
             raise ValueError(f"Unknown mode: {mode}")
     
-    def forward_tensor(
-        self,
-        inputs: torch.Tensor,
-        data_samples: Optional[List] = None,
-    ) -> torch.Tensor:
-        """Forward pass returning segmentation logits."""
-        weather_label = None
+    def forward_tensor(self, inputs: torch.Tensor, data_samples: Optional[List] = None) -> torch.Tensor:
+        """Forward pass - 显存优化版本"""
         
-        # Extract weather labels
-        if data_samples is not None and len(data_samples) > 0:
-            batch_size = inputs.shape[0]
-            weather_labels = []
-            
-            for i in range(batch_size):
-                weather = 0  # Default: clear weather
-                
-                if i < len(data_samples):
-                    sample = data_samples[i]
-                    
-                    # Extract weather label from various sources
-                    if hasattr(sample, 'metainfo') and sample.metainfo is not None:
-                        weather = sample.metainfo.get('weather_label', 0)
-                    elif hasattr(sample, 'weather_label'):
-                        weather = sample.weather_label
-                    elif isinstance(sample, dict):
-                        weather = sample.get('weather_label', 0)
-                
-                weather = int(weather) if weather is not None else 0
-                if not (0 <= weather <= 4):
-                    weather = 0
-                
-                weather_labels.append(weather)
-            
-            # Create weather label tensor
-            if weather_labels:
-                weather_label = torch.tensor(
-                    weather_labels, dtype=torch.long, device=inputs.device
-                )
+        # 优化的天气标签提取
+        weather_label = self._extract_weather_labels_optimized(inputs, data_samples)
         
-        # Forward pass
-        encoder_outputs = self.encoder(inputs, weather_label)
-        decoder_output = self.decoder(encoder_outputs)
+        # 使用梯度检查点或正常前向传播
+        if self.gradient_checkpointing and self.training:
+            # 梯度检查点版本
+            encoder_outputs = checkpoint(
+                self.encoder, inputs, weather_label, use_reentrant=False
+            )
+            decoder_output = checkpoint(
+                self.decoder, encoder_outputs, use_reentrant=False
+            )
+        else:
+            # 正常前向传播
+            encoder_outputs = self.encoder(inputs, weather_label)
+            decoder_output = self.decoder(encoder_outputs)
+        
         logits = self.decode_head(decoder_output)
+        
+        # 显存效率模式：及时释放中间变量
+        if self.memory_efficient and self.training:
+            del encoder_outputs, decoder_output
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
         
         return logits
     
-    def forward_predict(
-        self,
-        inputs: torch.Tensor,
-        data_samples: Optional[List] = None,
-    ) -> List[Dict]:
+    def _extract_weather_labels_optimized(self, inputs: torch.Tensor, data_samples: Optional[List]) -> Optional[torch.Tensor]:
+        """优化的天气标签提取 - 减少显存分配"""
+        
+        if not self.use_condition or data_samples is None or len(data_samples) == 0:
+            return None
+        
+        batch_size = inputs.shape[0]
+        
+        # 直接创建张量，避免中间列表
+        weather_labels = torch.zeros(batch_size, dtype=torch.long, device=inputs.device)
+        
+        for i in range(min(batch_size, len(data_samples))):
+            sample = data_samples[i]
+            weather = 0  # Default: clear weather
+            
+            # 提取天气标签
+            try:
+                if hasattr(sample, 'metainfo') and sample.metainfo is not None:
+                    weather = sample.metainfo.get('weather_label', 0)
+                elif hasattr(sample, 'weather_label'):
+                    weather = sample.weather_label
+                elif isinstance(sample, dict):
+                    weather = sample.get('weather_label', 0)
+                
+                weather = int(weather) if weather is not None else 0
+                weather = max(0, min(4, weather))  # Clamp to [0, 4]
+            except:
+                weather = 0
+            
+            weather_labels[i] = weather
+        
+        return weather_labels
+    
+    def forward_predict(self, inputs: torch.Tensor, data_samples: Optional[List] = None) -> List[Dict]:
         """Forward pass for prediction."""
-        logits = self.forward_tensor(inputs, data_samples)
-        pred_label = logits.argmax(dim=1)
+        with torch.no_grad():  # 推理时禁用梯度
+            logits = self.forward_tensor(inputs, data_samples)
+            pred_label = logits.argmax(dim=1)
         
         predictions = []
         for i in range(pred_label.shape[0]):
@@ -152,21 +165,17 @@ class DicSegmentor(BaseModel):
         
         return predictions
     
-    def forward_loss(
-        self,
-        inputs: torch.Tensor,
-        data_samples: List,
-    ) -> Dict[str, torch.Tensor]:
+    def forward_loss(self, inputs: torch.Tensor, data_samples: List) -> Dict[str, torch.Tensor]:
         """Forward pass for training with loss."""
         logits = self.forward_tensor(inputs, data_samples)
         
+        # 优化的GT标签处理
         gt_labels = torch.stack([
-            sample.gt_sem_seg.data.squeeze()
+            sample.gt_sem_seg.data.squeeze() if sample.gt_sem_seg.data.dim() > 2 
+            else sample.gt_sem_seg.data
             for sample in data_samples
         ])
 
         loss = self.criterion(logits, gt_labels)
         
-        losses = {'loss_seg': loss}
-        
-        return losses
+        return {'loss_seg': loss}
