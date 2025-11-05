@@ -19,6 +19,8 @@ env_cfg = dict(cudnn_benchmark=True)
 log_processor = dict(by_epoch=True)
 log_level = 'INFO'
 
+# 多卡配置
+find_unused_parameters = True  # 处理 unused grad
 # ============================================================================
 # Checkpoint 保存策略
 # ============================================================================
@@ -34,6 +36,7 @@ default_hooks = dict(
         max_keep_ckpts=3,
         save_last=True,
         save_best='mIoU',
+        rule='greater',
     ),
     sampler_seed=dict(type='DistSamplerSeedHook'),
 )

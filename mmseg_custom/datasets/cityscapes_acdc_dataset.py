@@ -40,22 +40,35 @@ class CityscapesACDCDataset(BaseSegDataset):
         Args:
             use_processed_labels: 是否使用预处理的标签文件
         """
-        super().__init__(**kwargs)
+        # ✅ 关键修复：属性赋值 BEFORE super().__init__()
         self.use_processed_labels = use_processed_labels
         
-        if use_processed_labels:
-            self.processed_root = Path(self.data_root) / '.processed_labels'
+        # 预先准备 processed_root（如果需要）
+        if use_processed_labels and 'data_root' in kwargs:
+            data_root = Path(kwargs['data_root'])
+            self.processed_root = data_root / '.processed_labels'
+        else:
+            self.processed_root = None
+        
+        # 现在调用 super().__init__()，它会立即调用 load_data_list()
+        # 此时 self.processed_root 已经存在
+        super().__init__(**kwargs)
+        
+        # 验证预处理状态（可选的后初始化）
+        if use_processed_labels and self.processed_root:
             if not self._check_preprocessing_completed():
                 logger.warning("数据集可能未完成预处理，建议运行 tools/prep_labels.py")
     
     def _check_preprocessing_completed(self) -> bool:
         """检查数据集是否已完成预处理"""
+        if not self.processed_root:
+            return False
         metadata_file = self.processed_root / 'preprocessing_metadata.json'
         return metadata_file.exists()
     
     def _get_processed_label_path(self, original_path: Path) -> Path:
         """获取预处理标签路径"""
-        if not self.use_processed_labels:
+        if not self.use_processed_labels or not self.processed_root:
             return original_path
         
         try:
@@ -71,6 +84,7 @@ class CityscapesACDCDataset(BaseSegDataset):
         else:
             logger.warning(f"预处理标签不存在，使用原始标签: {original_path.name}")
             return original_path
+    
     
     def load_data_list(self) -> List[Dict]:
         """加载数据列表 - 支持预处理标签"""

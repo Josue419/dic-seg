@@ -67,7 +67,8 @@ param_scheduler = [
 train_dataloader = dict(
     batch_size=4,  # 根据显存调整
     num_workers=4,
-    persistent_workers=False,
+    persistent_workers=True,
+    drop_last=True,  # 多卡必需：确保 batch 能整除 GPU 数
 )
 
 val_dataloader = dict(

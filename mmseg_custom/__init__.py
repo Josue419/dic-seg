@@ -24,7 +24,9 @@ try:
             # 强制覆盖，确保 mmengine 使用 mmseg 版本
             MMENGINE_TRANSFORMS.register_module(name=name, module=transform_cls, force=True)
 
-    print(f"✅ 成功注册 {len(mmseg_transform_names)} 个 mmseg transforms 到 mmengine registry")
+    
+    """
+        print(f"✅ 成功注册 {len(mmseg_transform_names)} 个 mmseg transforms 到 mmengine registry")
     
     # 验证关键 transforms
     key_transforms = ['LoadAnnotations', 'PackSegInputs', 'LoadImageFromFile']
@@ -36,6 +38,7 @@ try:
             print(f"  ⚠ {name}: 使用 {cls}")
         else:
             print(f"  ❌ {name}: 未找到")
+    """
             
 except Exception as e:
     print(f"⚠ Transform 注册表修复失败: {e}")
@@ -43,7 +46,7 @@ except Exception as e:
 # ✅ 第三步：导入自定义模块
 from .models import *
 from .datasets import *
-
+from .utils import *
 __version__ = '1.0.0'
 
 __all__ = [
@@ -53,5 +56,15 @@ __all__ = [
     'CityscapesACDCDataset',
     'CityscapesACDCSimple',
     'LoadWeatherLabel', 
-    'FinalizeWeatherLabel'
+    'FinalizeWeatherLabel',
+
+    'setup_logger',
+    'ConfigPrinter',
+    'CompactFormatter',
+    'Colors',
+
+    'SegmentationVisualizer',
+    'MetricsPlotter',
+    'ComparisonAnalyzer',
+    'WeatherAnalyzer',
 ]
