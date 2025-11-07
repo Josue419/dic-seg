@@ -47,6 +47,7 @@ except Exception as e:
 from .models import *
 from .datasets import *
 from .utils import *
+from .hooks import *
 __version__ = '1.0.0'
 
 __all__ = [
@@ -67,4 +68,6 @@ __all__ = [
     'MetricsPlotter',
     'ComparisonAnalyzer',
     'WeatherAnalyzer',
+
+    'ProgressHook',
 ]

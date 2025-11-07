@@ -40,7 +40,15 @@ default_hooks = dict(
     ),
     sampler_seed=dict(type='DistSamplerSeedHook'),
 )
-
+# ✅ 【关键】自定义 Hook - 每 epoch 打印进度条
+custom_hooks = [
+    dict(
+        type='mmseg_custom.ProgressHook',
+        interval=50,              # 保留参数（向后兼容）
+        print_epoch_summary=True, # 启用 epoch 摘要打印
+        progress_bar_width=40,    # 进度条宽度
+    )
+]
 # ============================================================================
 # 评估配置
 # ============================================================================
