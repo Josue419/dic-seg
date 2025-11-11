@@ -33,9 +33,9 @@ default_hooks = dict(
         type='CheckpointHook',
         by_epoch=True,
         interval=1,
-        max_keep_ckpts=3,
+        max_keep_ckpts=1,
         save_last=True,
-        save_best='mIoU',
+        save_best='val/mIoU',
         rule='greater',
     ),
     sampler_seed=dict(type='DistSamplerSeedHook'),
@@ -44,7 +44,7 @@ default_hooks = dict(
 custom_hooks = [
     dict(
         type='mmseg_custom.ProgressHook',
-        interval=50,              # 保留参数（向后兼容）
+        interval=10,              # 保留参数（向后兼容）
         print_epoch_summary=True, # 启用 epoch 摘要打印
         progress_bar_width=40,    # 进度条宽度
     )
@@ -54,7 +54,7 @@ custom_hooks = [
 # ============================================================================
 
 # 评估间隔（每 5 个 epoch）
-evaluation = dict(interval=5, metric='mIoU', save_best='mIoU')
+evaluation = dict(interval=5, metric='val/mIoU', save_best='val/mIoU')
 
 # ============================================================================
 # Checkpoint 加载

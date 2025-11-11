@@ -17,7 +17,7 @@ from .basic_block import ConditionalGatingBlock, ConditionalGatingBlockNoGating
 ENCODER_CONFIGS = {
     'S': {  # DiC-Small
         'num_blocks': [6, 6, 5, 6, 6],          # E0-E4
-        'channels': [96, 192, 384, 768, 768],   # out_channels for each stage
+        'channels': [96, 192, 384, 192, 96],   # out_channels for each stage
     },
     'B': {  # DiC-Base
         'num_blocks': [8, 8, 6, 8, 8],

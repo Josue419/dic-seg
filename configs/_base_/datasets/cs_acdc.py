@@ -11,8 +11,8 @@ Cityscapes + ACDC 联合训练数据集配置 - 修复版
 train_pipeline = [
     dict(type='LoadImageFromFile', to_float32=True, color_type='color'),
     dict(type='LoadAnnotations', reduce_zero_label=False),
-    dict(type='Resize', scale=(1024, 2048), keep_ratio=True),
-    dict(type='RandomCrop', crop_size=(512, 512), cat_max_ratio=0.75),
+    dict(type='Resize', scale=(256,512), keep_ratio=True),
+    dict(type='RandomCrop', crop_size=(256,256), cat_max_ratio=0.75),
     dict(type='RandomFlip', prob=0.5),
     dict(type='PhotoMetricDistortion'),
     # 修复：使用正确的 ImageNet 归一化参数
@@ -26,7 +26,7 @@ train_pipeline = [
 val_pipeline = [
     dict(type='LoadImageFromFile', to_float32=True, color_type='color'),
     dict(type='LoadAnnotations', reduce_zero_label=False),
-    dict(type='Resize', scale=(512, 1024), keep_ratio=False),
+    dict(type='Resize', scale=(256,512), keep_ratio=False),
     # 修复：验证时也需要归一化
     dict(type='Normalize', 
          mean=[123.675, 116.28, 103.53], 

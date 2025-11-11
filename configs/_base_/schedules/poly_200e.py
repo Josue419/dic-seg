@@ -21,6 +21,7 @@ optim_wrapper = dict(
 )
 
 # 学习率调度：PolyLR
+'''
 param_scheduler = [
     dict(
         type='PolyLR',
@@ -30,6 +31,11 @@ param_scheduler = [
         end=200,
         by_epoch=True,
     )
+]
+'''
+param_scheduler = [
+    dict(type='LinearLR', start_factor=1e-6, by_epoch=True, begin=0, end=20),
+    dict(type='PolyLR', power=0.9, eta_min=1e-6, begin=20, end=200, by_epoch=True),
 ]
 
 # 训练循环

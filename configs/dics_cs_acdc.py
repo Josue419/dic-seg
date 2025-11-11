@@ -21,8 +21,8 @@ DiC-S 联合训练配置：Cityscapes + ACDC 完整训练
 
 _base_ = [
     '_base_/models/dic_s.py',
-    '_base_/datasets/cs_acdc.py',
-    '_base_/schedules/poly_200e.py',
+    '_base_/datasets/cityscapes.py',
+    '_base_/schedules/poly_50e.py',
     '_base_/default_runtime.py',
 ]
 custom_imports = dict(
@@ -49,19 +49,9 @@ model = dict(
 # ============================================================================
 
 # 联合训练需要更多 epoch 收敛
-train_cfg = dict(type='EpochBasedTrainLoop', max_epochs=300)
+train_cfg = dict(type='EpochBasedTrainLoop', max_epochs=200)
 
-# 学习率调度适配
-param_scheduler = [
-    dict(
-        type='PolyLR',
-        eta_min=1e-6,
-        power=0.9,
-        begin=0,
-        end=300,  # 匹配 max_epochs
-        by_epoch=True,
-    )
-]
+
 
 # 数据加载优化
 train_dataloader = dict(
@@ -69,6 +59,7 @@ train_dataloader = dict(
     num_workers=4,
     persistent_workers=True,
     drop_last=True,  # 多卡必需：确保 batch 能整除 GPU 数
+    pin_memory=True,
 )
 
 val_dataloader = dict(
@@ -87,15 +78,27 @@ default_hooks = dict(
         type='CheckpointHook',
         by_epoch=True,
         interval=5,  # 每 5 epoch 保存
-        max_keep_ckpts=5,
-        save_best='mIoU',
+        max_keep_ckpts=2,
+        save_best='val/mIoU',
         save_last=True,
     ),
 )
+
+'''
+继续训练配置
+resume_from = '/path/to/your/checkpoint.pth'  # 你之前保存的 checkpoint
+resume = True  # 启用 resume 模式
+'''
+
+'''
+ ✅ 只加载模型权重，重置优化器和 epoch
+load_from = 'work_dirs/dic_s_cs/best_val_mIoU_epoch_18.pth'  # 你之前保存的 checkpoint
+resume = False  # 不启用 resume 模式（默认值）
+'''
 
 # ============================================================================
 # 工作目录
 # ============================================================================
 
-work_dir = './work_dirs/dic_s_cityscapes_acdc_joint'
-exp_name = 'dics_cs_acdc'
+work_dir = './work_dirs/dic_s_cs'
+exp_name = 'dics_acdc'
