@@ -1,72 +1,15 @@
-"""
-运行时配置（日志、checkpoint、评估等）
-
-所有实验配置共享此配置
-"""
-
-# ============================================================================
-# 模块初始化：确保自定义模块被正确注册
-# ============================================================================
-
-
-
-# ============================================================================
-# 默认设置
-# ============================================================================
-
 default_scope = 'mmseg'
-env_cfg = dict(cudnn_benchmark=True)
-log_processor = dict(by_epoch=True)
-log_level = 'INFO'
-
-# 多卡配置
-find_unused_parameters = True  # 处理 unused grad
-# ============================================================================
-# Checkpoint 保存策略
-# ============================================================================
-
-default_hooks = dict(
-    timer=dict(type='IterTimerHook'),
-    logger=dict(type='LoggerHook', interval=50),
-    param_scheduler=dict(type='ParamSchedulerHook'),
-    checkpoint=dict(
-        type='CheckpointHook',
-        by_epoch=True,
-        interval=1,
-        max_keep_ckpts=1,
-        save_last=True,
-        save_best='val/mIoU',
-        rule='greater',
-    ),
-    sampler_seed=dict(type='DistSamplerSeedHook'),
+env_cfg = dict(
+    cudnn_benchmark=True,
+    mp_cfg=dict(mp_start_method='fork', opencv_num_threads=0),
+    dist_cfg=dict(backend='nccl'),
 )
-# ✅ 【关键】自定义 Hook - 每 epoch 打印进度条
-custom_hooks = [
-    dict(
-        type='mmseg_custom.ProgressHook',
-        interval=10,              # 保留参数（向后兼容）
-        print_epoch_summary=True, # 启用 epoch 摘要打印
-        progress_bar_width=40,    # 进度条宽度
-    )
-]
-# ============================================================================
-# 评估配置
-# ============================================================================
-
-# 评估间隔（每 5 个 epoch）
-evaluation = dict(interval=5, metric='val/mIoU', save_best='val/mIoU')
-
-# ============================================================================
-# Checkpoint 加载
-# ============================================================================
-
+vis_backends = [dict(type='LocalVisBackend')]
+visualizer = dict(
+    type='SegLocalVisualizer', vis_backends=vis_backends, name='visualizer')
+log_processor = dict(by_epoch=False)
+log_level = 'INFO'
 load_from = None
-resume_from = None
 resume = False
 
-# ============================================================================
-# 工作目录（默认值，可被实验配置覆盖）
-# ============================================================================
-
-work_dir = './work_dirs'
-exp_name = 'default_exp'
+tta_model = dict(type='SegTTAModel')
